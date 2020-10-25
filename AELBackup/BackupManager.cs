@@ -202,7 +202,7 @@ namespace AELBackup
 
                 if (File.Exists(toRemove))
                 {
-                    Console.WriteLine($"Deleting expired backup `{toRemove}`");
+                    Console.WriteLine($"Deleting expired backup `{Path.GetFileName(toRemove)}`");
                     File.Delete(toRemove);
                 }
 
@@ -236,7 +236,7 @@ namespace AELBackup
             // Disable events
             _watcher.EnableRaisingEvents = false;
 
-            WriteLineInColor($"Restored system data from `{toRestore}`", ConsoleColor.Cyan);
+            WriteLineInColor($"Restored system data from `{Path.GetFileName(toRestore)}`", ConsoleColor.Cyan);
 
             // Enable events
             _watcher.EnableRaisingEvents = true;
