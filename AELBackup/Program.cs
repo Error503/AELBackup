@@ -1,160 +1,75 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+
+using CommandLine;
 
 namespace AELBackup
 {
+    // ReSharper disable once ClassNeverInstantiated.Global
     public class Program
     {
-        private static readonly string DefaultListenDir =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "KoeiTecmo", "Atelier Escha and Logy DX", "SAVEDATA");
-
-        private const string TargetFileName = "SYSDATA.pcsave";
-
-        private static int _backupCount = 5;
-        private static string _backupsFolder = Path.Combine(DefaultListenDir, "backups");
-
-        private static FileSystemWatcher _watcher;
-        private static List<string> _currentBackups;
+        private static BackupManager _manager;
 
         public static void Main(string[] args)
         {
-            Console.WriteLine("Atelier Escha & Logy System Data Backup Program is running...");
-
-            if (args != null && args.Length > 0)
-            {
-                ReadCommandLineArgs(args);
-            }
-
-            // Check for backups directory
-            if (!Directory.Exists(_backupsFolder))
-            {
-                Directory.CreateDirectory(_backupsFolder);
-            }
-
-            // Get the current backups ordered by date descending (Newest first)
-            _currentBackups = Directory.EnumerateFiles(_backupsFolder, "*.backup", SearchOption.TopDirectoryOnly).OrderByDescending(File.GetCreationTimeUtc).ToList();
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"Found {_currentBackups.Count} existing backups");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("Atelier Escha & Logy DX Steam Edition System Data Backup Program is running");
+            Console.WriteLine("This program is developed and maintained independently and is not affiliated with KoeiTecmo or Gust.");
+            Console.WriteLine("For support on this backup system, visit https://github.com/Error503/AELBackup");
             Console.ResetColor();
 
-            // Create the file system watcher
-            _watcher = new FileSystemWatcher(DefaultListenDir)
+            // Parse options
+            Parser.Default.ParseArguments<BackupManager.ManagerOptions>(args).WithParsed(ProcessOptions);
+
+            using (_manager)
             {
-                Filter = TargetFileName,
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime
-            };
-
-            // Bind events
-            _watcher.Created += CreateBackup;
-            _watcher.Changed += CreateBackup;
-            _watcher.Deleted += CreateBackup;
-
-            // Start watching
-            _watcher.EnableRaisingEvents = true;
-
-            // TODO: Have ability to enter number to restore that backup
-            // Loop until told to exit
-            Console.WriteLine("Press 'q' to close the application.\n");
-            while (Console.Read() != 'q') { }
-
-            Console.WriteLine("Closing application");
-
-            _watcher.EnableRaisingEvents = false;
-
-            // Remove event listeners
-            _watcher.Created -= CreateBackup;
-            _watcher.Changed -= CreateBackup;
-            _watcher.Deleted -= CreateBackup;
-
-            _watcher.Dispose();
-
-            Console.WriteLine("Application closed");
-        }
-
-        private static void ReadCommandLineArgs(string[] args)
-        {
-            throw new NotImplementedException("Command line arguments not yet implemented");
-        }
-
-        private static void CreateBackup(object sender, FileSystemEventArgs args)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"Triggering backup of system data from `{args.ChangeType}` on file `{args.Name}`");
-
-            var targetFilePath = Path.Combine(DefaultListenDir, TargetFileName);
-            var safetyCounter = 25;
-            while (safetyCounter > 0 && !IsFileReady(targetFilePath))
-            {
-                safetyCounter--;
+                _manager.Run();
             }
 
-            if (safetyCounter == 0)
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("Atelier Escha & Logy DX Steam Edition System Data Backup Program closing");
+            Console.ResetColor();
+        }
+
+        private static void ProcessOptions(BackupManager.ManagerOptions options)
+        {
+            if (string.IsNullOrWhiteSpace(options.OriginalLauncherPath))
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("Failed to create backup, the file remained in use for longer than expected");
-                Console.ResetColor();
-                return;
-            }
-
-            var currentDate = DateTime.Now;
-
-            var backupFileName = $"SYSDATA_{currentDate:yyyy_MM_dd_HH_mm_ss}.pcsave.backup";
-            var savePath = Path.Combine(_backupsFolder, backupFileName);
-
-            // First, check if a file with the same name already exists, this removes duplicate calls
-            if (File.Exists(savePath))
-                return;
-
-            // Disable raising of events
-            _watcher.EnableRaisingEvents = false;
-
-            // Copy the file
-            File.Copy(targetFilePath, savePath);
-
-            // Reenable raising of events
-            _watcher.EnableRaisingEvents = true;
-
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"Created backup: `{savePath}`");
-
-            // Insert into the front of the list
-            _currentBackups.Insert(0, savePath);
-
-            // Remove any extra backups
-            while (_currentBackups.Count > _backupCount)
-            {
-                var toRemove = _currentBackups[^1];
-
-                // Check if the file exists before deleting it first
-                if (File.Exists(toRemove))
+                // Look for our configuration file
+                var configFilePath = Path.Combine(BackupManager.SaveDataDirectory, "BackupSettings.txt");
+                if (!File.Exists(configFilePath))
                 {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"Deleting expired backup: `{toRemove}`");
-                    File.Delete(toRemove);
+                    // Config file does not exist, so prompt the user for the launcher directory
+                    string filePath;
+                    bool isValid;
+                    do
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.Write("First time setup. Please enter the full file path of the game executable.\n>>> ");
+                        Console.ResetColor();
+
+                        filePath = Console.ReadLine() ?? string.Empty;
+                        isValid = File.Exists(filePath) && filePath.EndsWith(".exe");
+                        if (!isValid)
+                        {
+                            Console.WriteLine("Invalid file path. Please make sure the file exists and is an executable (.exe) file");
+                        }
+                    } while (!isValid);
+
+                    options.OriginalLauncherPath = filePath;
+
+                    // Write the file path to the configuration file for next launch
+                    using var writer = new StreamWriter(File.Create(configFilePath));
+                    writer.WriteLine(filePath);
                 }
-
-                // Remove the last entry in the list
-                _currentBackups.RemoveAt(_currentBackups.Count - 1);
+                else
+                {
+                    options.OriginalLauncherPath = File.ReadAllText(configFilePath);
+                }
             }
 
-            Console.ResetColor();
-        }
-
-        private static bool IsFileReady(string filePath)
-        {
-            try
-            {
-                using var inputStream = File.OpenRead(filePath);
-
-                return inputStream.Length > 0;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            // Create the manager
+            _manager = new BackupManager(options);
         }
     }
 }
