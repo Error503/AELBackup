@@ -3,6 +3,16 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# User-specific JetBrains Rider files
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+
+# JetBrains generated files
+.idea/**/contentModel.xml
+
 # User-specific files
 *.rsuser
 *.suo
