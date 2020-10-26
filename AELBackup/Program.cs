@@ -16,6 +16,7 @@ namespace AELBackup
             Console.WriteLine("Atelier Escha & Logy DX Steam Edition System Data Backup Program is running");
             Console.WriteLine("This program is developed and maintained independently and is not affiliated with KoeiTecmo or Gust.");
             Console.WriteLine("For support on this backup system, visit https://github.com/Error503/AELBackup");
+            Console.WriteLine();
             Console.ResetColor();
 
             // Parse options

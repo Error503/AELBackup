@@ -1,0 +1,5 @@
+﻿2020-10-26 [v1.0.1]
+- fix: old backups not being deleted as new backups are made
+- change: remove auto close functionality as it is inconsistent
+- fix: change wait for SYSDATA.pcsave to decrease chance of file being locked when a backup is created
+- fix: change logged text to be more clear

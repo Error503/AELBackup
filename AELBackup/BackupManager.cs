@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 using CommandLine;
 
 namespace AELBackup
 {
+    // BUG: 'Priming' system appears to cause issues. Backup creation fails. It appears all events are happening twice
+    // FIX: Backups were not being deleted, fixed already
     public class BackupManager : IDisposable
     {
         public static readonly string SaveDataDirectory =
@@ -15,10 +18,10 @@ namespace AELBackup
 
         private const string SystemSaveDataName = "SYSDATA.pcsave";
 
-        private ManagerOptions _options;
-        private FileSystemWatcher _watcher;
+        private readonly ManagerOptions _options;
+        private readonly FileSystemWatcher _watcher;
+
         private Process _gameProcess;
-        private Process _gameInstance;
 
         private List<string> _currentBackups;
 
@@ -33,22 +36,20 @@ namespace AELBackup
                 Path = SaveDataDirectory,
                 Filter = "*.pcsave",
                 NotifyFilter = NotifyFilters.LastWrite,
+                IncludeSubdirectories = false
             };
 
             _watcher.Changed += HandleBackupTrigger;
             _watcher.Created += HandleBackupTrigger;
-            _watcher.Deleted += HandleBackupTrigger;
         }
 
         public void Dispose()
         {
             _watcher.Changed -= HandleBackupTrigger;
             _watcher.Created -= HandleBackupTrigger;
-            _watcher.Deleted -= HandleBackupTrigger;
 
             _watcher?.Dispose();
             _gameProcess?.Dispose();
-            _gameInstance?.Dispose();
         }
 
         public void Run()
@@ -65,7 +66,7 @@ namespace AELBackup
 
             WriteLineInColor($"Found {_currentBackups.Count} existing backups", ConsoleColor.Green);
 
-            Console.WriteLine("Attempting to launch game process...");
+            WriteLineInColor("Attempting to launch game...", ConsoleColor.Cyan);
 
             // Start listening
             _watcher.EnableRaisingEvents = true;
@@ -81,33 +82,15 @@ namespace AELBackup
             // Start the process
             _gameProcess.Start();
 
-            Console.WriteLine("Attempting to launch game...");
-
             // Wait for the game to close
             while (!_gameProcess.HasExited) { }
 
-            Console.WriteLine("Steam Client Bootstrapper exited, waiting for game to start");
+            WriteLineInColor("Game launched. Ready to backup system data.", ConsoleColor.Green);
+            Console.WriteLine("Press 'q' to close the backup application");
 
-            /*
-             * At this point the game is launching through the steam bootstrapper.
-             * We need to wait for the atelier process to start running.
-             */
-            var foundProcess = false;
-            do
-            {
-                var processList = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(_options.OriginalLauncherPath));
-                if (processList.Length != 1)
-                    continue;
+            while (Console.Read() != 'q') { }
 
-                foundProcess = true;
-                _gameInstance = processList[0];
-            } while (!foundProcess);
-
-            WriteLineInColor("Game successfully launched. Ready to handle any changes to save data", ConsoleColor.Green);
-
-            _gameInstance.WaitForExit();
-
-            Console.WriteLine("Game closed, stopping backup system");
+            Console.WriteLine("Closing backup program");
             _watcher.EnableRaisingEvents = false;
         }
 
@@ -139,7 +122,7 @@ namespace AELBackup
                 // If this is the first event,
                 if (cachedIsFirstEvent)
                 {
-                    WriteLineInColor($"Detected update to {SystemSaveDataName} file without a priming change. Restoring system data.", ConsoleColor.Red);
+                    WriteLineInColor($"Detected update to {SystemSaveDataName} file without a save data change. Restoring system data.", ConsoleColor.Red);
 
                     // The first event is always a read of the SYSDATA, the file may have just been corrupted
                     if (!RestoreBackup(0))
@@ -147,13 +130,12 @@ namespace AELBackup
                         WriteLineInColor("Failed to restore backup automatically!", ConsoleColor.DarkRed);
                     }
                 }
-
-                WriteLineInColor("Change to system data without save data change detected! Please note when this happened!", ConsoleColor.Magenta);
-                CreateBackup();
+                else
+                {
+                    WriteLineInColor("Change to system data without save data change detected! Please note when this happened!", ConsoleColor.Magenta);
+                    CreateBackup();
+                }
             }
-
-            // Remove excess backups
-            RemoveOldBackups();
         }
 
         private void CreateBackup()
@@ -169,10 +151,11 @@ namespace AELBackup
 
             // Wait for the file to be ready
             var filePath = Path.Combine(SaveDataDirectory, SystemSaveDataName);
-            var counter = 25;
+            var counter = 10;
             while (counter > 0 && !IsFileReady(filePath))
             {
                 counter--;
+                Thread.Sleep(500);
             }
 
             if (counter == 0)
@@ -191,6 +174,12 @@ namespace AELBackup
 
             // Enable events
             _watcher.EnableRaisingEvents = true;
+
+            // Insert into the backup list
+            _currentBackups.Insert(0, filePath);
+
+            // Remove old backups
+            RemoveOldBackups();
         }
 
         private void RemoveOldBackups()
@@ -222,10 +211,11 @@ namespace AELBackup
 
             // Wait for the file to be ready
             var filePath = Path.Combine(SaveDataDirectory, SystemSaveDataName);
-            var counter = 25;
+            var counter = 10;
             while (counter > 0 && !IsFileReady(filePath))
             {
                 counter--;
+                Thread.Sleep(500);
             }
 
             if (counter == 0)
