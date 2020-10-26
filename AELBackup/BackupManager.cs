@@ -60,7 +60,8 @@ namespace AELBackup
             }
 
             // Get the existing backups, ordered by date descending (newest first)
-            _currentBackups = Directory.EnumerateFiles(Path.Combine(SaveDataDirectory, _options.BackupDirectory)).OrderByDescending(File.GetCreationTimeUtc).ToList();
+            _currentBackups = Directory.EnumerateFiles(Path.Combine(SaveDataDirectory, _options.BackupDirectory), "*.backup", SearchOption.TopDirectoryOnly)
+                                       .OrderByDescending(File.GetCreationTimeUtc).ToList();
 
             WriteLineInColor($"Found {_currentBackups.Count} existing backups", ConsoleColor.Green);
 

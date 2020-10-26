@@ -36,7 +36,7 @@ namespace AELBackup
             if (string.IsNullOrWhiteSpace(options.OriginalLauncherPath))
             {
                 // Look for our configuration file
-                var configFilePath = Path.Combine(BackupManager.SaveDataDirectory, "BackupSettings.txt");
+                var configFilePath = Path.Combine(BackupManager.SaveDataDirectory, options.BackupDirectory, "BackupSettings.txt");
                 if (!File.Exists(configFilePath))
                 {
                     // Config file does not exist, so prompt the user for the launcher directory
